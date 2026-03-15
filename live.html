@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platine v5 — Hardware Diagnostics</title>
+  <link rel="stylesheet" href="css/live.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 14 14" fill="none">
+        <rect x=".5" y=".5" width="13" height="13" rx="1.5" stroke="white" stroke-width="1"/>
+        <rect x="3" y="3" width="4" height="4" fill="white"/>
+        <rect x="9" y="3" width="2" height="2" fill="white" opacity=".6"/>
+        <rect x="3" y="9" width="8" height="1.5" fill="white" opacity=".35"/>
+        <rect x="9" y="7" width="2" height="2" fill="white" opacity=".25"/>
+      </svg>
+    </div>
+    Platine
+  </div>
+  <div class="vsep"></div>
+  <div class="hchip" id="hdr-model">v5 · Full Hardware Map</div>
+  <div class="hlive" id="hl-cpu" style="display:none"><div class="dot"></div>CPU <span class="val" id="hlv-cpu">—</span></div>
+  <div class="hlive" id="hl-disk" style="display:none"><div class="dot"></div>DISK <span class="val" id="hlv-disk">—</span></div>
+  <div class="hlive" id="hl-bat" style="display:none"><div class="dot"></div>BAT <span class="val" id="hlv-bat">—</span></div>
+  <div class="hlive hlive-ws" id="hl-ws" style="display:none"><div class="dot dot-pulse"></div>LIVE <span class="val" id="hlv-ws">—</span></div>
+  <div class="hright">
+    <button class="btn btn-g" onclick="resetScan()">↩ New scan</button>
+    <button class="btn btn-p" onclick="document.getElementById('fih').click()">▲ Upload JSON</button>
+    <input type="file" id="fih" accept=".json" style="display:none" onchange="handleFile(this)">
+  </div>
+</header>
+
+<div class="board-area" id="board-area">
+  <div id="upload-screen">
+    <div class="ucard">
+      <div class="utitle">See inside any machine.</div>
+      <div class="usub">Run <strong>platine-scan.ps1</strong> (Windows) or <strong>platine-scan.sh</strong> (Linux).<br>Upload the JSON, or connect live via WebSocket if on the same WiFi.</div>
+      <div class="dropzone" id="dz">
+        <input type="file" accept=".json" id="fi" onchange="handleFile(this)">
+        <div class="drop-ico">⬡</div>
+        <div class="drop-txt"><strong>Drop platine-scan.json here</strong><br>or click to browse</div>
+      </div>
+
+      <div class="live-box" id="live-box">
+        <div class="live-box-title">⚡ Platine Live USB</div>
+        <div class="live-box-sub">Same WiFi? Connect directly to the USB scanner.</div>
+        <div class="live-row">
+          <input class="live-input" id="live-ip" type="text" placeholder="192.168.1.x:8765" spellcheck="false">
+          <button class="live-btn" onclick="connectLive()">Connect</button>
+        </div>
+        <div class="live-status" id="live-status"></div>
+      </div>
+
+      <button class="demo-btn" onclick="loadDemo()">▶ Load demo — HP EliteDesk 800 G3</button>
+      <div class="uhint">All data processed locally — nothing leaves your device</div>
+    </div>
+  </div>
+  <div id="map-screen">
+    <div class="mhdr">
+      <span class="mmodel" id="map-model">—</span>
+      <span class="mtag" id="map-tag">—</span>
+      <div class="hpill ok" id="hpill">—</div>
+      <button class="rbtn" onclick="resetScan()">↩ New scan</button>
+    </div>
+    <div class="probanner" id="probanner">
+      <div class="pb-t">⚠ Issues detected</div>
+      <div id="problist"></div>
+    </div>
+    <div id="bsvgw"><svg id="bsvg"></svg></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="hstrip" id="hstrip" style="display:none">
+    <div class="hsc"><div class="hsl">Health</div><div class="hsv ok" id="hs-sc">—</div><div class="hss" id="hs-lb">—</div></div>
+    <div class="hsc"><div class="hsl">Issues</div><div class="hsv er" id="hs-is">0</div><div class="hss" id="hs-wn">0 warnings</div></div>
+    <div class="hsc"><div class="hsl">Components</div><div class="hsv ok" id="hs-co">—</div><div class="hss">detected</div></div>
+    <div class="hsc"><div class="hsl">Scan</div><div class="hsv ok" id="hs-id" style="font-size:10px;letter-spacing:0">—</div><div class="hss" id="hs-dt">—</div></div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="tab('info')">Info</div>
+    <div class="tab" onclick="tab('terminal')">Terminal</div>
+    <div class="tab" onclick="tab('bios')">BIOS</div>
+    <div class="tab" onclick="tab('faults')">Faults</div>
+    <div class="tab tab-sym" onclick="tab('symptoms')" id="tab-symptoms">Symptoms</div>
+    <div class="tab tab-cmp" onclick="tab('comparison')" id="tab-comparison">⚡ Compare</div>
+  </div>
+  <div class="pbody">
+    <div class="tab-pane active" id="tp-info">
+      <div class="empty" id="ei"><div class="ei">◈</div><div class="et-e">No scan loaded</div><div class="es-e">Upload a platine-scan.json<br>or load the demo.</div></div>
+      <div id="di" style="display:none">
+        <div class="abox" id="abox"></div>
+        <div class="dname" id="dn"></div>
+        <div class="dref" id="dr"></div>
+        <div class="spill ok" id="ds"><div class="sdot"></div><span id="dst">—</span></div>
+        <div class="stitle">Description</div>
+        <div id="dd" style="font-size:10px;line-height:1.8;color:var(--tx2)"></div>
+        <div class="stitle">Specifications</div>
+        <div class="sgrid" id="dsp"></div>
+      </div>
+    </div>
+    <div class="tab-pane" id="tp-terminal">
+      <div class="empty" id="et2"><div class="ei">_</div><div class="et-e">Select a component</div><div class="es-e">Terminal commands appear here.</div></div>
+      <div id="dt" style="display:none"></div>
+    </div>
+    <div class="tab-pane" id="tp-bios">
+      <div class="empty" id="eb"><div class="ei">⚙</div><div class="et-e">Select a component</div><div class="es-e">BIOS fix instructions appear here.</div></div>
+      <div id="db" style="display:none"></div>
+    </div>
+    <div class="tab-pane" id="tp-faults">
+      <div class="empty" id="ef2"><div class="ei">✓</div><div class="et-e">Select a component</div><div class="es-e">Known fault patterns appear here.</div></div>
+      <div id="df" style="display:none"></div>
+    </div>
+    <div class="tab-pane" id="tp-symptoms">
+      <div class="empty" id="esym"><div class="ei">⚕</div><div class="et-e">No symptoms detected</div><div class="es-e">Load a scan to see symptom analysis.</div></div>
+      <div id="dsym" style="display:none"></div>
+    </div>
+    <div class="tab-pane" id="tp-comparison">
+      <div class="empty" id="ecmp"><div class="ei">⚡</div><div class="et-e">No scan loaded</div><div class="es-e">Load a scan to see real vs expected values.</div></div>
+      <div id="dcmp" style="display:none"></div>
+    </div>
+  </div>
+  <div class="badges-bar">
+    <span class="bl">Badges</span>
+    <!-- CREATOR — PCB trace, black on white -->
+    <div class="bwrap">
+      <svg width="28" height="28" viewBox="0 0 28 28">
+        <rect width="28" height="28" rx="5" fill="#111110"/>
+        <path d="M4 14 L8 14 L8 8 L14 8 L14 4" stroke="white" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <path d="M24 14 L20 14 L20 20 L14 20 L14 24" stroke="white" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <path d="M4 20 L10 20 L10 14 L18 14 L18 8 L24 8" stroke="rgba(255,255,255,.35)" stroke-width=".8" fill="none" stroke-linecap="round"/>
+        <circle cx="8" cy="14" r="1.5" fill="white"/><circle cx="14" cy="8" r="1.5" fill="white"/>
+        <circle cx="20" cy="14" r="1.5" fill="white"/><circle cx="14" cy="20" r="1.5" fill="white"/>
+        <circle cx="14" cy="14" r="2.5" fill="#16a34a"/>
+      </svg>
+      <div class="btt"><strong>⚡ Creator</strong>Built Platine from scratch</div>
+    </div>
+    <!-- BETA — chip, black/green -->
+    <div class="bwrap">
+      <svg width="28" height="28" viewBox="0 0 28 28">
+        <rect width="28" height="28" rx="5" fill="#f0fdf4"/>
+        <rect x="1" y="1" width="26" height="26" rx="4.5" fill="none" stroke="#16a34a" stroke-width="1.3"/>
+        <rect x="7" y="7" width="14" height="14" rx="2" fill="#111110"/>
+        <rect x="4" y="9" width="3" height="1.5" rx=".5" fill="#16a34a"/>
+        <rect x="4" y="12.5" width="3" height="1.5" rx=".5" fill="#16a34a"/>
+        <rect x="4" y="16" width="3" height="1.5" rx=".5" fill="#16a34a"/>
+        <rect x="21" y="9" width="3" height="1.5" rx=".5" fill="#16a34a"/>
+        <rect x="21" y="12.5" width="3" height="1.5" rx=".5" fill="#16a34a"/>
+        <rect x="21" y="16" width="3" height="1.5" rx=".5" fill="#16a34a"/>
+        <text x="14" y="17.5" font-family="DM Mono,monospace" font-size="8" font-weight="500" fill="white" text-anchor="middle">β</text>
+      </svg>
+      <div class="btt"><strong>🧪 Beta #001</strong>First 100 — Platine Beta Tester</div>
+    </div>
+    <!-- FIRST CONTRIBUTION — wrench, green -->
+    <div class="bwrap">
+      <svg width="28" height="28" viewBox="0 0 28 28">
+        <rect width="28" height="28" rx="5" fill="#16a34a"/>
+        <path d="M8 20 L16 12 L18 10 C19.5 8.5 21.5 9 22 10.5 C22.5 12 21 13.5 19.5 14 L17 16 L9 24 Z" fill="white" opacity=".9"/>
+        <path d="M20 20 L12 12 L10 10 C9 9 9 7.5 10 7 L12 9.5 L14 12 L16 14 Z" fill="white" opacity=".6"/>
+        <circle cx="9.5" cy="22" r="1.5" fill="white"/>
+      </svg>
+      <div class="btt"><strong>🛠️ First Contribution</strong>Documented & solved a hardware issue</div>
+    </div>
+    <span style="margin-left:auto;font-size:8px;color:var(--tx3);font-family:var(--mono)">platine.dev</span>
+  </div>
+</div>
+
+  <script src="js/live.js"></script>
+</body>
+</html>
