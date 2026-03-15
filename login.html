@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platine — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/auth.css">
+</head>
+<body class="auth-body">
+
+  <!-- NAV minimal -->
+  <nav class="auth-nav">
+    <a href="index.html" class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 14 14" fill="none">
+          <rect x=".5" y=".5" width="13" height="13" rx="1.5" stroke="white" stroke-width="1"/>
+          <rect x="3" y="3" width="4" height="4" fill="white"/>
+          <rect x="9" y="3" width="2" height="2" fill="white" opacity=".6"/>
+          <rect x="3" y="9" width="8" height="1.5" fill="white" opacity=".35"/>
+          <rect x="9" y="7" width="2" height="2" fill="white" opacity=".25"/>
+        </svg>
+      </div>
+      Platine
+    </a>
+  </nav>
+
+  <!-- AUTH CARD -->
+  <main class="auth-main">
+    <div class="auth-card">
+
+      <!-- LOGIN VIEW -->
+      <div class="auth-view" id="view-login">
+        <div class="auth-header">
+          <div class="auth-title">Welcome back</div>
+          <div class="auth-sub">Sign in to download the ISO or manage your USB order.</div>
+        </div>
+
+        <form class="auth-form" id="form-login" onsubmit="handleLogin(event)">
+          <div class="field">
+            <label class="field-label">Email</label>
+            <input class="field-input" type="email" id="login-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+          <div class="field">
+            <label class="field-label">Password</label>
+            <div class="field-pw-wrap">
+              <input class="field-input" type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="pw-toggle" onclick="togglePw('login-password', this)">Show</button>
+            </div>
+          </div>
+
+          <div class="auth-error" id="login-error"></div>
+
+          <button type="submit" class="auth-btn" id="login-btn">
+            <span class="btn-label">Sign in →</span>
+            <span class="btn-loader" style="display:none">···</span>
+          </button>
+        </form>
+
+        <div class="auth-footer">
+          Don't have an account?
+          <button class="auth-switch" onclick="switchView('register')">Create one →</button>
+        </div>
+      </div>
+
+      <!-- REGISTER VIEW -->
+      <div class="auth-view" id="view-register" style="display:none">
+        <div class="auth-header">
+          <div class="auth-title">Create account</div>
+          <div class="auth-sub">Free forever. Download the ISO and start diagnosing.</div>
+        </div>
+
+        <form class="auth-form" id="form-register" onsubmit="handleRegister(event)">
+          <div class="field">
+            <label class="field-label">Email</label>
+            <input class="field-input" type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email">
+          </div>
+          <div class="field">
+            <label class="field-label">Password</label>
+            <div class="field-pw-wrap">
+              <input class="field-input" type="password" id="reg-password" placeholder="Min. 8 characters" required autocomplete="new-password" oninput="checkStrength(this.value)">
+              <button type="button" class="pw-toggle" onclick="togglePw('reg-password', this)">Show</button>
+            </div>
+            <div class="pw-strength" id="pw-strength">
+              <div class="pw-bar"><div class="pw-fill" id="pw-fill"></div></div>
+              <span class="pw-label" id="pw-label"></span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">Confirm password</label>
+            <div class="field-pw-wrap">
+              <input class="field-input" type="password" id="reg-confirm" placeholder="••••••••" required autocomplete="new-password">
+              <button type="button" class="pw-toggle" onclick="togglePw('reg-confirm', this)">Show</button>
+            </div>
+          </div>
+
+          <div class="auth-gdpr">
+            <input type="checkbox" id="gdpr" required>
+            <label for="gdpr">
+              I agree to the <a href="#">Privacy Policy</a>. 
+              Data stored in Frankfurt, Germany 🇪🇺
+            </label>
+          </div>
+
+          <div class="auth-error" id="reg-error"></div>
+
+          <button type="submit" class="auth-btn" id="reg-btn">
+            <span class="btn-label">Create account →</span>
+            <span class="btn-loader" style="display:none">···</span>
+          </button>
+        </form>
+
+        <div class="auth-footer">
+          Already have an account?
+          <button class="auth-switch" onclick="switchView('login')">Sign in →</button>
+        </div>
+      </div>
+
+      <!-- SUCCESS VIEW -->
+      <div class="auth-view" id="view-success" style="display:none">
+        <div class="auth-success">
+          <div class="success-icon">✓</div>
+          <div class="success-title" id="success-title">Signed in!</div>
+          <div class="success-sub" id="success-sub">Redirecting...</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Side info -->
+    <div class="auth-side">
+      <div class="side-card">
+        <div class="side-icon">⬇</div>
+        <div class="side-title">Free ISO download</div>
+        <div class="side-desc">Flash it yourself with Balena Etcher. Full product, no limits.</div>
+      </div>
+      <div class="side-card">
+        <div class="side-icon">🔒</div>
+        <div class="side-title">GDPR compliant</div>
+        <div class="side-desc">Your data stays in Frankfurt, Germany. No third-party tracking.</div>
+      </div>
+      <div class="side-card">
+        <div class="side-icon">⚡</div>
+        <div class="side-title">Scan any machine</div>
+        <div class="side-desc">Real vs expected values. Know exactly what to fix in 30 seconds.</div>
+      </div>
+    </div>
+  </main>
+
+<script src="js/auth.js"></script>
+</body>
+</html>
