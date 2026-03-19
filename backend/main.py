@@ -58,6 +58,10 @@ async def login():
 @app.get("/live/{session_id}", include_in_schema=False)
 async def live(session_id: str):
     return FileResponse(f"{FRONTEND}/live.html")
+    
+@app.get("/privacy", include_in_schema=False)
+async def privacy():
+    return FileResponse(f"{FRONTEND}/privacy.html")
 
 # ── Health check ──────────────────────────────────────────
 @app.get("/api/health")
