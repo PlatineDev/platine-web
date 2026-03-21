@@ -334,7 +334,7 @@
 <script>
 function openDownload(){
   if(Platine.Auth.isLoggedIn()){
-    window.location.href='https://github.com/PlatineDev/platine-live-usb/releases/latest';
+    window.location.href='https://platine.dev/download/platine-live.iso';
   } else {
     document.getElementById('auth-modal').classList.add('open');
     switchView('login');
@@ -353,7 +353,7 @@ window.showSuccess=function(){
   document.getElementById('view-success').style.display='block';
   setTimeout(()=>{
     closeModal();
-    window.location.href='https://github.com/PlatineDev/platine-live-usb/releases/latest';
+    window.location.href='https://platine.dev/download/platine-live.iso';
   },1500);
 }
 </script>
