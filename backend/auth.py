@@ -20,10 +20,10 @@ bearer  = HTTPBearer(auto_error=False)
 
 # ── Password ──────────────────────────────────────────────
 def hash_password(password: str) -> str:
-    return pwd_ctx.hash(password)
+    return pwd_ctx.hash(password[:72])
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+    return pwd_ctx.verify(plain[:72], hashed)
 
 # ── JWT ───────────────────────────────────────────────────
 def create_token(user_id: int, email: str) -> str:
