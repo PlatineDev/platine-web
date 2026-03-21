@@ -15,7 +15,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-please")
 ALGORITHM  = "HS256"
 TOKEN_DAYS = 30
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_ctx = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 bearer  = HTTPBearer(auto_error=False)
 
 # ── Password ──────────────────────────────────────────────
