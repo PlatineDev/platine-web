@@ -762,7 +762,7 @@ window.addEventListener('load',()=>{
         // Poll for data every 3 seconds
         Platine.startPolling(sessionId, function(res) {
             if (res.ok && res.data) {
-                loadData(res.data);
+                loadScan(res.data);
             }
         });
     }
