@@ -752,4 +752,19 @@ window.addEventListener('load',()=>{
     wsHost=window.PLATINE_WS_HOST;
     wsOpen(window.PLATINE_WS_HOST);
   }
-});
+  
+// Auto-load from URL if /live/{id}
+(function() {
+    const path = window.location.pathname;
+    const match = path.match(/^\/live\/([a-z0-9]+)$/);
+    if (match) {
+        const sessionId = match[1];
+        // Poll for data every 3 seconds
+        Platine.startPolling(sessionId, function(res) {
+            if (res.ok && res.data) {
+                loadData(res.data);
+            }
+        });
+    }
+})();
+
