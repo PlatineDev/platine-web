@@ -761,21 +761,20 @@ window.addEventListener('load',()=>{
     const sessionId = match[1];
     
     function poll() {
-    fetch('/api/live/' + sessionId + '/data')
-        .then(r => r.json())
-        .then(res => {
-            console.log('Poll response:', res);
-            if (res.data) {
-                console.log('Loading scan data...');
-                loadScan(res.data);
-            }
-            setTimeout(poll, 3000);
-        })
-        .catch(err => {
-            console.log('Poll error:', err);
-            setTimeout(poll, 5000);
-        });
-}
+        fetch('/api/live/' + sessionId + '/data')
+            .then(r => r.json())
+            .then(res => {
+                dbg('Got: ' + JSON.stringify(res).substring(0, 80));
+                if (res.data) {
+                    dbg('Loading scan...');
+                    loadScan(res.data);
+                }
+                setTimeout(poll, 3000);
+            })
+            .catch(err => {
+                dbg('Error: ' + err);
+                setTimeout(poll, 5000);
+            });
+    }
     poll();
 })();
-
