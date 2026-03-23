@@ -759,6 +759,7 @@ window.addEventListener('load',()=>{
     const match = path.match(/^\/live\/([a-z0-9]+)$/);
     if (!match) return;
     const sessionId = match[1];
+    dbg('Session: ' + sessionId);
     
     function poll() {
         fetch('/api/live/' + sessionId + '/data')
