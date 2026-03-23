@@ -761,14 +761,21 @@ window.addEventListener('load',()=>{
     const sessionId = match[1];
     
     function poll() {
-        fetch('/api/live/' + sessionId + '/data')
-            .then(r => r.json())
-            .then(res => {
-                if (res.data) loadScan(res.data);
-                setTimeout(poll, 3000);
-            })
-            .catch(() => setTimeout(poll, 5000));
-    }
+    fetch('/api/live/' + sessionId + '/data')
+        .then(r => r.json())
+        .then(res => {
+            console.log('Poll response:', res);
+            if (res.data) {
+                console.log('Loading scan data...');
+                loadScan(res.data);
+            }
+            setTimeout(poll, 3000);
+        })
+        .catch(err => {
+            console.log('Poll error:', err);
+            setTimeout(poll, 5000);
+        });
+}
     poll();
 })();
 
