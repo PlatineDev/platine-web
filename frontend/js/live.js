@@ -757,6 +757,7 @@ window.addEventListener('load',()=>{
 (function() {
     const path = window.location.pathname;
     const match = path.match(/^\/live\/([a-z0-9]+)$/);
+    dbg('Path: ' + window.location.pathname);
     if (!match) return;
     const sessionId = match[1];
     dbg('Session: ' + sessionId);
