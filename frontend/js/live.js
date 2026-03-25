@@ -755,6 +755,7 @@ window.addEventListener('load',()=>{
     wsHost=window.PLATINE_WS_HOST;
     wsOpen(window.PLATINE_WS_HOST);
   }
+});
   
 // Auto-load from platine.dev/live/{id}
 (function() {
