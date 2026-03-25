@@ -763,18 +763,19 @@ window.addEventListener('load',()=>{
     if (!match) return;
     const sessionId = match[1];
     let loaded = false;
-    
-    function poll() {
-        fetch('/api/live/' + sessionId + '/data')
-            .then(r => r.json())
-            .then(res => {
-                if (res.data && !loaded) {
-                    loaded = true;
-                    loadScan(res.data);
-                }
-                setTimeout(poll, 5000);
-            })
-            .catch(() => setTimeout(poll, 5000));
-    }
+
+function poll() {
+    fetch('/api/live/' + sessionId + '/data')
+        .then(r => r.json())
+        .then(res => {
+            if (res.data && !loaded) {
+                loaded = true;
+                loadScan(res.data);
+                return; // ← para aquí, no continúa
+            }
+            if (!loaded) setTimeout(poll, 3000);
+        })
+        .catch(() => { if (!loaded) setTimeout(poll, 5000); });
+}
     poll();
 })();
