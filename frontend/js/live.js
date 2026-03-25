@@ -166,7 +166,10 @@ function loadScan(data){
   const bat=(data.battery||[])[0];
   if(bat?.health_pct){const el=document.getElementById('hl-bat');el.style.display='flex';el.className='hlive '+(bat.health_pct<50?'er':bat.health_pct<75?'wn':'');document.getElementById('hlv-bat').textContent=bat.health_pct+'%';}
 
-  buildMap(data,isD);resetPanel();
+  const prevSel = selId;
+buildMap(data,isD);
+resetPanel();
+if(prevSel) setTimeout(()=>selComp(prevSel), 50);
   renderSymptoms(data);
   renderComparison(data);
 }
