@@ -779,10 +779,5 @@ function poll() {
         .catch(() => { if (!loaded) setTimeout(poll, 5000); });
 }
 
-   const _origResetPanel = resetPanel;
-resetPanel = function() {
-    console.trace('resetPanel called from:');
-    _origResetPanel();
-}; 
     poll();
 })();
