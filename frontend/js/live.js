@@ -759,13 +759,17 @@ window.addEventListener('load',()=>{
     const match = path.match(/^\/live\/([a-z0-9]+)$/);
     if (!match) return;
     const sessionId = match[1];
+    let loaded = false;
     
     function poll() {
         fetch('/api/live/' + sessionId + '/data')
             .then(r => r.json())
             .then(res => {
-                if (res.data) loadScan(res.data);
-                setTimeout(poll, 3000);
+                if (res.data && !loaded) {
+                    loaded = true;
+                    loadScan(res.data);
+                }
+                setTimeout(poll, 5000);
             })
             .catch(() => setTimeout(poll, 5000));
     }
