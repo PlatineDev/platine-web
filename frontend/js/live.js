@@ -757,26 +757,17 @@ window.addEventListener('load',()=>{
 (function() {
     const path = window.location.pathname;
     const match = path.match(/^\/live\/([a-z0-9]+)$/);
-    dbg('Path: ' + window.location.pathname);
     if (!match) return;
     const sessionId = match[1];
-    dbg('Session: ' + sessionId);
     
     function poll() {
         fetch('/api/live/' + sessionId + '/data')
             .then(r => r.json())
             .then(res => {
-                dbg('Got: ' + JSON.stringify(res).substring(0, 80));
-                if (res.data) {
-                    dbg('Loading scan...');
-                    loadScan(res.data);
-                }
+                if (res.data) loadScan(res.data);
                 setTimeout(poll, 3000);
             })
-            .catch(err => {
-                dbg('Error: ' + err);
-                setTimeout(poll, 5000);
-            });
+            .catch(() => setTimeout(poll, 5000));
     }
     poll();
 })();
