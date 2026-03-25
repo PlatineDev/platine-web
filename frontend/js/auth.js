@@ -198,7 +198,8 @@ async function handleRegister(e) {
 (function() {
   const token = localStorage.getItem('platine_token');
   const next  = new URLSearchParams(window.location.search).get('next');
-  if (token && !next) {
+  const isLoginPage = window.location.pathname === '/login';
+  if (token && !next && isLoginPage) {
     window.location.href = '/';
   }
 })();
