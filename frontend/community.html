@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platine Community — Hardware Q&amp;A for Technicians</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/community.css">
+</head>
+<body>
+
+<nav class="comm-nav" id="comm-nav"></nav>
+
+<div class="comm-layout">
+  <aside class="comm-sidebar">
+    <h3>Tags</h3>
+    <div class="tag-list" id="tag-list">
+      <div class="spinner" style="margin:10px auto"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="feed-toolbar">
+      <h1 id="feed-title">All Questions</h1>
+      <div class="sort-tabs">
+        <button class="sort-tab active" data-sort="new"      onclick="setSort('new')">New</button>
+        <button class="sort-tab"        data-sort="top"      onclick="setSort('top')">Top</button>
+        <button class="sort-tab"        data-sort="unsolved" onclick="setSort('unsolved')">Unsolved</button>
+      </div>
+      <input class="search-input" type="text" placeholder="Search..." id="search-input" oninput="onSearch(this.value)">
+      <a href="/community/ask" class="ask-btn">+ Ask question</a>
+    </div>
+
+    <div id="posts-list">
+      <div class="empty-state"><div class="spinner" style="margin:0 auto"></div></div>
+    </div>
+  </main>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/community.js"></script>
+<script>
+let currentSort = 'new';
+let currentTag  = null;
+let currentQ    = '';
+let searchTimer = null;
+
+function setSort(sort) {
+  currentSort = sort;
+  document.querySelectorAll('.sort-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.sort === sort)
+  );
+  loadPosts();
+}
+
+function onSearch(val) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { currentQ = val.trim(); loadPosts(); }, 350);
+}
+
+async function loadTags() {
+  const params = new URLSearchParams(window.location.search);
+  currentTag = params.get('tag') || null;
+
+  const tags = await CommunityAPI.tags().catch(() => []);
+  const list = document.getElementById('tag-list');
+  list.innerHTML =
+    `<a class="tag-item ${!currentTag ? 'active' : ''}" href="/community">All</a>` +
+    tags.map(t => `
+      <a class="tag-item ${currentTag === t.name ? 'active' : ''}"
+         href="/community?tag=${encodeURIComponent(t.name)}">
+        <div class="tag-dot" style="background:${t.color}"></div>${escHtml(t.name)}
+      </a>`).join('');
+
+  if (currentTag) {
+    document.getElementById('feed-title').textContent = '#' + currentTag;
+  }
+}
+
+async function loadPosts() {
+  const list = document.getElementById('posts-list');
+  list.innerHTML = '<div class="empty-state"><div class="spinner" style="margin:0 auto"></div></div>';
+
+  const params = { sort: currentSort };
+  if (currentTag) params.tag = currentTag;
+  if (currentQ)   params.q   = currentQ;
+
+  try {
+    const { posts } = await CommunityAPI.posts(params);
+
+    if (!posts.length) {
+      list.innerHTML = `<div class="empty-state">
+        <div class="ei">◈</div>
+        <div class="et">No questions yet</div>
+        <div class="es">Be the first to <a href="/community/ask" style="color:var(--ac)">ask one</a>!</div>
+      </div>`;
+      return;
+    }
+
+    list.innerHTML = posts.map(p => `
+      <div class="post-card ${p.is_solved ? 'solved' : ''}" onclick="location.href='/community/post/${p.id}'">
+        <div class="post-stats">
+          <div class="stat-item ${p.is_solved ? 'solved-stat' : ''}">
+            <span class="stat-val">${p.score}</span><span>votes</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val">${p.answer_count}</span><span>answers</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val" style="font-size:12px">${p.views}</span><span>views</span>
+          </div>
+        </div>
+        <div class="post-body">
+          <div class="post-title">
+            ${escHtml(p.title)}
+            ${p.is_solved ? ' <span class="solved-badge">✓ Solved</span>' : ''}
+          </div>
+          <div class="post-excerpt">${escHtml(p.excerpt)}</div>
+          <div class="post-meta">
+            ${p.tags.map(t => renderTagChip(t)).join('')}
+            ${p.scan_id ? `<a class="scan-badge" href="/live/${escHtml(p.scan_id)}" onclick="event.stopPropagation()">📋 Scan attached</a>` : ''}
+            <span class="post-author">${escHtml(p.author_email)} · ${timeAgo(p.created_at)}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch {
+    list.innerHTML = '<div class="empty-state"><div class="et">Failed to load — try refreshing.</div></div>';
+  }
+}
+
+renderNav();
+loadTags();
+loadPosts();
+</script>
+</body>
+</html>

@@ -32,6 +32,7 @@
     <button class="btn btn-g" onclick="resetScan()">↩ New scan</button>
     <button class="btn btn-p" onclick="document.getElementById('fih').click()">▲ Upload JSON</button>
     <input type="file" id="fih" accept=".json" style="display:none" onchange="handleFile(this)">
+    <button class="btn btn-g" id="post-q-btn" style="display:none" onclick="postQuestion()">💬 Post question</button>
   </div>
 </header>
 
@@ -173,6 +174,21 @@
 <script src="/js/api.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/live.js"></script>
+<script>
+function postQuestion() {
+  const sessionId = window.location.pathname.split('/').pop();
+  if (window.Platine?.Auth?.isLoggedIn()) {
+    window.location.href = `/community/ask?scan=${encodeURIComponent(sessionId)}`;
+  } else {
+    window.location.href = `/login?next=${encodeURIComponent('/community/ask?scan=' + sessionId)}`;
+  }
+}
+// Show "Post question" button when a session is loaded
+const _sessionId = window.location.pathname.split('/').pop();
+if (_sessionId && _sessionId !== 'live') {
+  document.getElementById('post-q-btn').style.display = 'inline-flex';
+}
+</script>
 
 </body>
 </html>

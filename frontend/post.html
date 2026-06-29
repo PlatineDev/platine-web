@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platine Community</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/community.css">
+</head>
+<body>
+
+<nav class="comm-nav" id="comm-nav"></nav>
+<div class="post-detail-wrap" id="post-wrap">
+  <div class="empty-state"><div class="spinner" style="margin:0 auto"></div></div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/community.js"></script>
+<script>
+const postId = window.location.pathname.split('/').pop();
+let post = null;
+
+renderNav();
+
+function voteCls(userVote, dir) {
+  if (dir === 'up'   && userVote ===  1) return 'active-up';
+  if (dir === 'down' && userVote === -1) return 'active-down';
+  return '';
+}
+
+function scanPreviewHtml(scanId, preview) {
+  if (!scanId || !preview) return '';
+  const health = preview.health ?? '—';
+  const issues = preview.issues ?? '—';
+  const hColor = typeof health === 'number'
+    ? (health >= 80 ? 'var(--ok)' : health >= 50 ? 'var(--wn)' : 'var(--er)')
+    : 'var(--tx)';
+  return `
+    <div class="scan-preview-card">
+      <div class="scan-preview-model">📋 ${escHtml(preview.model || 'Unknown hardware')}</div>
+      <div class="scan-stat">
+        <span class="scan-stat-val" style="color:${hColor}">${health}</span>
+        <span class="scan-stat-lbl">Health</span>
+      </div>
+      <div class="scan-stat">
+        <span class="scan-stat-val" style="color:${issues > 0 ? 'var(--er)' : 'var(--ok)'}">${issues}</span>
+        <span class="scan-stat-lbl">Issues</span>
+      </div>
+      <a href="/live/${escHtml(scanId)}" class="scan-view-link" target="_blank">View full map →</a>
+    </div>`;
+}
+
+function render() {
+  const isLoggedIn = window.Platine?.Auth?.isLoggedIn();
+  const currentUserId = null; // we rely on post.is_author flag
+  const wrap = document.getElementById('post-wrap');
+
+  const answersHtml = post.answers.length === 0
+    ? `<div class="empty-state" style="padding:28px 0">
+         <div class="et">No answers yet</div>
+         <div class="es">Be the first to help this technician!</div>
+       </div>`
+    : post.answers.map(a => `
+        <div class="answer-row answer-card ${a.is_accepted ? 'accepted' : ''}" id="answer-${a.id}">
+          <div class="vote-col">
+            <button class="vote-btn ${voteCls(a.user_vote,'up')}"
+              onclick="voteAnswer(${a.id},1)" title="Upvote">▲</button>
+            <span class="vote-score" id="ascore-${a.id}">${a.score}</span>
+            <button class="vote-btn ${voteCls(a.user_vote,'down')}"
+              onclick="voteAnswer(${a.id},-1)" title="Downvote">▼</button>
+            ${a.is_accepted
+              ? `<span class="accepted-mark" title="Accepted answer">✓</span>`
+              : (post.is_author
+                  ? `<button class="accept-btn" onclick="acceptAnswer(${a.id})">✓ Accept</button>`
+                  : '')
+            }
+          </div>
+          <div class="content-col">
+            <div class="answer-content">${escHtml(a.body)}</div>
+            <div class="answer-meta">
+              <a href="/community/user/${a.author_id}" style="color:var(--tx2);text-decoration:none">${escHtml(a.author_email)}</a>
+              ${a.author_supporter ? '<span class="supporter-badge">Supporter</span>' : ''}
+              <span>· ${timeAgo(a.created_at)}</span>
+            </div>
+          </div>
+        </div>`).join('');
+
+  const formHtml = isLoggedIn
+    ? `<div class="answer-form-section">
+         <div class="answer-form-title">Your answer</div>
+         <textarea class="answer-textarea" id="answer-body"
+           placeholder="Write a detailed answer. Be specific — what to check, what to replace, what settings to change."></textarea>
+         <br>
+         <button class="submit-btn" onclick="submitAnswer()">Post answer →</button>
+         <div class="form-error" id="answer-error"></div>
+       </div>`
+    : `<div class="auth-prompt">
+         <a href="/login?next=/community/post/${postId}">Sign in</a> to post an answer.
+       </div>`;
+
+  wrap.innerHTML = `
+    <a href="/community" class="back-link">← Community</a>
+
+    <div class="post-row">
+      <div class="vote-col">
+        <button class="vote-btn ${voteCls(post.user_vote,'up')}"
+          onclick="votePost(1)" title="Upvote">▲</button>
+        <span class="vote-score" id="post-score">${post.score}</span>
+        <button class="vote-btn ${voteCls(post.user_vote,'down')}"
+          onclick="votePost(-1)" title="Downvote">▼</button>
+      </div>
+      <div class="content-col">
+        <h1 class="post-detail-title">${escHtml(post.title)}</h1>
+        <div class="post-detail-meta">
+          ${post.is_solved ? '<span class="solved-badge">✓ Solved</span>' : ''}
+          ${post.tags.map(t => renderTagChip(t)).join('')}
+          <span>by <a href="/community/user/${post.author_id}"
+            style="color:var(--tx2);text-decoration:none">${escHtml(post.author_email)}</a></span>
+          ${post.author_supporter ? '<span class="supporter-badge">Supporter</span>' : ''}
+          <span>· ${timeAgo(post.created_at)}</span>
+          <span>· ${post.views} views</span>
+        </div>
+        <div class="post-content">${escHtml(post.body)}</div>
+        ${scanPreviewHtml(post.scan_id, post.scan_preview)}
+      </div>
+    </div>
+
+    <div class="answers-section">
+      <div class="answers-title">${post.answers.length} Answer${post.answers.length !== 1 ? 's' : ''}</div>
+      ${answersHtml}
+    </div>
+
+    ${formHtml}
+  `;
+}
+
+async function loadPost() {
+  try {
+    post = await CommunityAPI.post(postId);
+    document.title = post.title + ' — Platine Community';
+    render();
+  } catch {
+    document.getElementById('post-wrap').innerHTML =
+      `<div class="empty-state">
+         <div class="et">Post not found</div>
+         <div class="es"><a href="/community" style="color:var(--ac)">← Back to community</a></div>
+       </div>`;
+  }
+}
+
+async function votePost(value) {
+  if (!window.Platine?.Auth?.isLoggedIn()) {
+    window.location.href = `/login?next=/community/post/${postId}`; return;
+  }
+  try {
+    const res = await CommunityAPI.votePost(postId, value);
+    // Refresh to update vote button states
+    post = await CommunityAPI.post(postId);
+    render();
+  } catch (e) { console.error(e); }
+}
+
+async function voteAnswer(answerId, value) {
+  if (!window.Platine?.Auth?.isLoggedIn()) {
+    window.location.href = `/login?next=/community/post/${postId}`; return;
+  }
+  try {
+    await CommunityAPI.voteAnswer(answerId, value);
+    post = await CommunityAPI.post(postId);
+    render();
+  } catch (e) { console.error(e); }
+}
+
+async function acceptAnswer(answerId) {
+  try {
+    await CommunityAPI.acceptAnswer(answerId);
+    post = await CommunityAPI.post(postId);
+    render();
+  } catch (e) { console.error(e); }
+}
+
+async function submitAnswer() {
+  const body  = document.getElementById('answer-body')?.value?.trim();
+  const errEl = document.getElementById('answer-error');
+  const btn   = document.querySelector('.submit-btn');
+
+  errEl.style.display = 'none';
+  if (!body || body.length < 10) {
+    errEl.textContent  = 'Answer is too short (min 10 characters).';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Posting...';
+
+  try {
+    await CommunityAPI.createAnswer(postId, body);
+    post = await CommunityAPI.post(postId);
+    render();
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  } catch (e) {
+    errEl.textContent  = e?.detail || 'Failed to post answer.';
+    errEl.style.display = 'block';
+    btn.disabled    = false;
+    btn.textContent = 'Post answer →';
+  }
+}
+
+loadPost();
+</script>
+</body>
+</html>

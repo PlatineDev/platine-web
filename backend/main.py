@@ -13,6 +13,7 @@ import os
 from db import init_db
 from routes.auth import router as auth_router
 from routes.live import router as live_router
+from routes.community import router as community_router
 
 # ── Startup ───────────────────────────────────────────────
 @asynccontextmanager
@@ -40,6 +41,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(live_router)
+app.include_router(community_router)
 
 # ── Serve frontend ────────────────────────────────────────
 FRONTEND = os.path.join(os.path.dirname(__file__), "../frontend")
@@ -62,6 +64,22 @@ async def live(session_id: str):
 @app.get("/privacy", include_in_schema=False)
 async def privacy():
     return FileResponse(f"{FRONTEND}/privacy.html")
+
+@app.get("/community", include_in_schema=False)
+async def community():
+    return FileResponse(f"{FRONTEND}/community.html")
+
+@app.get("/community/ask", include_in_schema=False)
+async def community_ask():
+    return FileResponse(f"{FRONTEND}/ask.html")
+
+@app.get("/community/post/{post_id}", include_in_schema=False)
+async def community_post(post_id: int):
+    return FileResponse(f"{FRONTEND}/post.html")
+
+@app.get("/community/user/{user_id}", include_in_schema=False)
+async def community_user(user_id: int):
+    return FileResponse(f"{FRONTEND}/profile.html")
 
 # ── Health check ──────────────────────────────────────────
 @app.get("/api/health")

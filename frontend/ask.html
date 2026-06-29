@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ask a question — Platine Community</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/community.css">
+</head>
+<body>
+
+<nav class="comm-nav" id="comm-nav"></nav>
+
+<div class="ask-wrap">
+  <a href="/community" class="back-link">← Community</a>
+  <h1>Ask a question</h1>
+
+  <div class="field-group">
+    <label class="field-label">Title</label>
+    <input class="field-input-full" type="text" id="post-title"
+      placeholder="e.g. HP EliteBook overheating after thermal paste replacement" maxlength="200">
+    <div class="field-hint">Be specific — model, component, and the symptom.</div>
+  </div>
+
+  <div class="field-group">
+    <label class="field-label">Details</label>
+    <textarea class="field-textarea" id="post-body"
+      placeholder="Describe the problem. What have you tried? What are the symptoms? What does the SMART/temp data show?"></textarea>
+  </div>
+
+  <div class="field-group">
+    <label class="field-label">Tags</label>
+    <div class="tags-picker" id="tags-picker">
+      <div class="spinner"></div>
+    </div>
+    <div class="field-hint">Select up to 5 tags.</div>
+  </div>
+
+  <div class="field-group">
+    <label class="field-label">Attach Platine scan <span style="font-weight:400;color:var(--tx3)">(optional)</span></label>
+    <div class="scan-attach-box">
+      <input type="text" id="scan-id-input" placeholder="Paste session ID (e.g. a3f8c2d1)"
+        maxlength="30" oninput="onScanInput(this.value)" autocomplete="off" spellcheck="false">
+      <button class="nav-pill" id="scan-clear-btn" style="display:none" onclick="clearScan()">✕</button>
+    </div>
+    <div class="scan-id-preview" id="scan-preview"></div>
+    <div class="field-hint">Attach a live scan so others can see the real hardware data.</div>
+  </div>
+
+  <div class="form-error" id="form-error"></div>
+  <button class="submit-btn" onclick="submitPost()">Post question →</button>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/community.js"></script>
+<script>
+let selectedTags  = [];
+let allTags       = [];
+let attachedScan  = null;
+let scanTimer     = null;
+
+// Must be logged in
+if (!window.Platine?.Auth?.isLoggedIn()) {
+  window.location.href = '/login?next=/community/ask';
+}
+
+renderNav();
+
+// Pre-fill scan from URL
+const urlParams = new URLSearchParams(window.location.search);
+const prefilledScan = urlParams.get('scan');
+if (prefilledScan) {
+  document.getElementById('scan-id-input').value = prefilledScan;
+  onScanInput(prefilledScan);
+}
+
+async function loadTags() {
+  allTags = await CommunityAPI.tags().catch(() => []);
+  renderPicker();
+}
+
+function renderPicker() {
+  document.getElementById('tags-picker').innerHTML = allTags.map(t => `
+    <div class="tag-pick ${selectedTags.includes(t.id) ? 'selected' : ''}"
+         onclick="toggleTag(${t.id})">${escHtml(t.name)}</div>
+  `).join('');
+}
+
+function toggleTag(id) {
+  if (selectedTags.includes(id)) {
+    selectedTags = selectedTags.filter(x => x !== id);
+  } else if (selectedTags.length < 5) {
+    selectedTags.push(id);
+  }
+  renderPicker();
+}
+
+function onScanInput(val) {
+  clearTimeout(scanTimer);
+  val = val.trim();
+  if (!val) { clearScan(); return; }
+  scanTimer = setTimeout(() => previewScan(val), 700);
+}
+
+async function previewScan(scanId) {
+  const el = document.getElementById('scan-preview');
+  try {
+    const res = await apiFetch(`/live/${scanId}/data`);
+    const scan = res.data;
+    attachedScan = scanId;
+    el.className = 'scan-id-preview ok';
+    el.style.display = 'block';
+    el.textContent = `✓ Scan attached — ${scan.model || 'Unknown'} · Health: ${scan.health_score ?? '—'}/100`;
+    document.getElementById('scan-clear-btn').style.display = 'inline-flex';
+  } catch {
+    attachedScan = null;
+    el.className = 'scan-id-preview er';
+    el.style.display = 'block';
+    el.textContent = 'Session not found or expired.';
+  }
+}
+
+function clearScan() {
+  attachedScan = null;
+  document.getElementById('scan-id-input').value = '';
+  const el = document.getElementById('scan-preview');
+  el.style.display = 'none';
+  el.className = 'scan-id-preview';
+  document.getElementById('scan-clear-btn').style.display = 'none';
+}
+
+async function submitPost() {
+  const title = document.getElementById('post-title').value.trim();
+  const body  = document.getElementById('post-body').value.trim();
+  const errEl = document.getElementById('form-error');
+  const btn   = document.querySelector('.submit-btn');
+
+  errEl.style.display = 'none';
+
+  if (!title || title.length < 10) { showErr('Title must be at least 10 characters.'); return; }
+  if (!body  || body.length  < 20) { showErr('Please write at least a couple sentences.'); return; }
+
+  btn.disabled    = true;
+  btn.textContent = 'Posting...';
+
+  try {
+    const res = await CommunityAPI.createPost({
+      title,
+      body,
+      tag_ids: selectedTags,
+      scan_id: attachedScan || null,
+    });
+    window.location.href = `/community/post/${res.id}`;
+  } catch (e) {
+    showErr(e?.detail || 'Failed to post. Please try again.');
+    btn.disabled    = false;
+    btn.textContent = 'Post question →';
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('form-error');
+  el.textContent  = msg;
+  el.style.display = 'block';
+}
+
+loadTags();
+</script>
+</body>
+</html>
