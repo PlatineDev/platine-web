@@ -371,6 +371,30 @@ header {
 .fdot { width: 5px; height: 5px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .fdot.h{background:var(--er)}.fdot.m{background:var(--wn)}.fdot.l{background:var(--tx3)}
 
+/* ── COMMUNITY TAB ── */
+.tab-cm { position: relative; }
+.cm-block {
+  background: var(--bg2); border: 1px solid var(--bd);
+  border-radius: 7px; padding: 10px 12px; margin-bottom: 8px;
+}
+.cm-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.cm-title { font-size: 10px; font-weight: 600; color: var(--tx); flex: 1; line-height: 1.4; }
+.cm-post {
+  display: block; padding: 7px 10px; background: var(--bg);
+  border: 1px solid var(--bd); border-radius: 5px;
+  margin-bottom: 5px; text-decoration: none; transition: border-color .12s;
+}
+.cm-post:hover { border-color: var(--ac); }
+.cm-post-t { font-size: 11px; color: var(--tx); line-height: 1.4; margin-bottom: 3px; }
+.cm-post-m { font-size: 9px; color: var(--tx3); }
+.cm-solved { color: var(--ok); font-weight: 600; }
+.cm-none { font-size: 10px; color: var(--tx3); padding: 5px 0 7px; font-style: italic; }
+.cm-ask {
+  display: inline-block; font-size: 9px; color: var(--ac);
+  text-decoration: none; margin-top: 4px; font-weight: 500;
+}
+.cm-ask:hover { text-decoration: underline; }
+
 /* Badges */
 .badges-bar { border-top: 1.5px solid var(--bd); padding: 10px 14px; display: flex; align-items: center; gap: 7px; flex-shrink: 0; background: var(--bg2); }
 .bl { font-size: 7px; color: var(--tx3); letter-spacing: 1px; text-transform: uppercase; margin-right: 3px; }

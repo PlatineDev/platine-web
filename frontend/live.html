@@ -27,6 +27,7 @@
   <div class="hlive" id="hl-cpu" style="display:none"><div class="dot"></div>CPU <span class="val" id="hlv-cpu">—</span></div>
   <div class="hlive" id="hl-disk" style="display:none"><div class="dot"></div>DISK <span class="val" id="hlv-disk">—</span></div>
   <div class="hlive" id="hl-bat" style="display:none"><div class="dot"></div>BAT <span class="val" id="hlv-bat">—</span></div>
+  <div class="hlive" id="hl-fans" style="display:none"><div class="dot"></div>FANS <span class="val" id="hlv-fans">—</span></div>
   <div class="hlive hlive-ws" id="hl-ws" style="display:none"><div class="dot dot-pulse"></div>LIVE <span class="val" id="hlv-ws">—</span></div>
   <div class="hright">
     <button class="btn btn-g" onclick="resetScan()">↩ New scan</button>
@@ -90,6 +91,7 @@
     <div class="tab" onclick="tab('faults')">Faults</div>
     <div class="tab tab-sym" onclick="tab('symptoms')" id="tab-symptoms">Symptoms</div>
     <div class="tab tab-cmp" onclick="tab('comparison')" id="tab-comparison">⚡ Compare</div>
+    <div class="tab tab-cm" onclick="tab('community')" id="tab-community">Community</div>
   </div>
   <div class="pbody">
     <div class="tab-pane active" id="tp-info">
@@ -124,6 +126,10 @@
     <div class="tab-pane" id="tp-comparison">
       <div class="empty" id="ecmp"><div class="ei">⚡</div><div class="et-e">No scan loaded</div><div class="es-e">Load a scan to see real vs expected values.</div></div>
       <div id="dcmp" style="display:none"></div>
+    </div>
+    <div class="tab-pane" id="tp-community">
+      <div class="empty" id="ecm"><div class="ei">◈</div><div class="et-e">No scan loaded</div><div class="es-e">Load a scan to see related community posts.</div></div>
+      <div id="dcm" style="display:none"></div>
     </div>
   </div>
   <div class="badges-bar">

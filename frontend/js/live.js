@@ -46,6 +46,151 @@ const KB={
     bios:[{path:"Advanced → PCIe/Device Configuration",desc:"Check if any devices are accidentally disabled.",note:"First step for any missing device"}]}
 };
 
+// ─── v2.1 JSON schema normaliser ─────────────────────────────────────────────
+// Translates the Linux scanner's v2 format into the internal format the
+// renderer understands. v1 (Windows PowerShell demo) passes through unchanged.
+function normalizeV2(data) {
+  if (!data || data._v2norm) return data;
+  const isV2 = data.problems != null || (data.platine_version && parseInt(data.platine_version) >= 2);
+  if (!isV2) return data;
+
+  data = Object.assign({}, data);
+  data._v2norm = true;
+
+  const parseGB  = s => { if (typeof s === 'number') return s; const m = String(s||'').match(/([\d.]+)/); return m ? parseFloat(m[1]) : null; };
+  const parseCKB = s => { if (!s) return null; const m = String(s).match(/^([\d.]+)\s*([KMG])/i); if (!m) return null; const n = parseFloat(m[1]); const u = m[2].toUpperCase(); return u==='G'?Math.round(n*1024*1024):u==='M'?Math.round(n*1024):Math.round(n); };
+
+  // CPU: single object → array
+  if (data.cpu && !Array.isArray(data.cpu)) {
+    const c = data.cpu;
+    data.cpu = [{
+      name: c.model, manufacturer: c.vendor,
+      cores: c.cores, logical_processors: c.threads,
+      base_clock_mhz: c.base_mhz, current_clock_mhz: c.current_mhz,
+      temp_celsius: c.temp_c,
+      throttling: c.throttle_active || false,
+      throttle_reason: c.throttle_reason, throttle_count: c.throttle_count,
+      per_core_temps: c.per_core_temps_c,
+      l3_cache_kb: parseCKB(c.cache && c.cache.l3),
+      freq_ratio: c.max_mhz ? Math.round((c.current_mhz / c.max_mhz) * 100) : null,
+      virtualization: true, _v2cpu: c,
+    }];
+  }
+
+  // RAM: object with slots[] → memory.modules[]
+  if (data.ram && !Array.isArray(data.ram) && !data.memory) {
+    const r = data.ram;
+    data.memory = {
+      total_gb: r.total_gb, available_gb: r.available_gb,
+      total_slots: Math.max((r.slots||[]).length + 1, 2),
+      used_slots: (r.slots||[]).length,
+      xmp_available: r.xmp_available, xmp_enabled: r.xmp_enabled,
+      modules: (r.slots||[]).map(s => ({
+        slot: s.locator, size_gb: parseGB(s.size), type: s.type,
+        form_factor: r.is_lpddr ? 'LPDDR' : 'DIMM',
+        speed_mhz: s.speed, configured_mhz: r.configured_mhz,
+        manufacturer: s.manufacturer, part_number: s.part_number,
+        xmp_available: r.xmp_available, xmp_enabled: r.xmp_enabled,
+      })),
+    };
+  }
+
+  // Storage drives: rename fields + synthesise SMART attrs from v2 scalars
+  if (data.storage && data.storage.drives) {
+    data.storage = Object.assign({}, data.storage);
+    data.storage.drives = data.storage.drives.map(drv => {
+      if (drv._v2drv) return drv;
+      const attrs = (drv.smart_attrs || drv.smart_attributes || []).slice();
+      const hasId = id => attrs.some(a => a.id === id);
+      if (!hasId(5)   && drv.reallocated_sectors != null) attrs.push({id:5,  name:'Reallocated_Sector_Ct', raw: drv.reallocated_sectors});
+      if (!hasId(197) && drv.pending_sectors     != null) attrs.push({id:197,name:'Current_Pending_Sector', raw: drv.pending_sectors});
+      if (!hasId(9)   && drv.power_hours         != null) attrs.push({id:9,  name:'Power_On_Hours',         raw: drv.power_hours});
+      if (!hasId(194) && drv.temp_c              != null) attrs.push({id:194,name:'Temperature_Celsius',    raw: drv.temp_c});
+      return Object.assign({}, drv, {
+        _v2drv: true,
+        bus_type: drv.type || drv.bus_type,
+        smart_status: drv.smart_health === 'PASSED' ? 'OK' : drv.smart_health === 'FAILED' ? 'FAILED' : (drv.smart_health || drv.smart_status || '?'),
+        smart_failing: drv.smart_health === 'FAILED',
+        smart_attributes: attrs,
+      });
+    });
+  }
+
+  // GPU: object with gpus[] → flat array
+  if (data.gpu && !Array.isArray(data.gpu)) {
+    const intHints = ['Intel','Iris','Integrated','Radeon Graphics'];
+    data.gpu = (data.gpu.gpus || []).map((g, i) => ({
+      name: g.model, is_integrated: i === 0 && intHints.some(h => (g.model||'').includes(h)),
+      vram_mb: g.vram_mb, vram_display: g.vram_mb ? g.vram_mb+'MB' : 'Shared',
+      driver_version: g.driver, status: 'OK', temp_celsius: g.temp_c,
+    }));
+  }
+
+  // Battery: object with batteries[] → flat array
+  if (data.battery && !Array.isArray(data.battery)) {
+    data.battery = (data.battery.batteries || []).map(b => ({
+      name: b.name, chemistry: b.technology,
+      charge_remaining: b.charge_pct, health_pct: b.health_pct,
+      cycle_count: b.cycle_count,
+      design_capacity_wh: b.design_mwh != null ? +(b.design_mwh/1000).toFixed(1) : null,
+      full_capacity_wh:   b.full_mwh   != null ? +(b.full_mwh/1000).toFixed(1)   : null,
+      voltage_v: b.voltage_v, swelling_risk: b.swelling_risk, status: b.status,
+    }));
+  }
+
+  // Network: object with interfaces[] → flat array
+  if (data.network && !Array.isArray(data.network)) {
+    data.network = (data.network.interfaces || []).map(i => ({
+      name: i.interface + (i.driver ? ' ('+i.driver+')' : ''),
+      is_wireless: i.type === 'WiFi', is_bluetooth: false,
+      speed_mbps: i.speed_mbps, net_enabled: i.status === 'up' && i.carrier === 1,
+      mac_address: i.mac, ip_addresses: [],
+      wifi_ssid: i.wifi_ssid, wifi_channel: i.wifi_channel,
+      wifi_freq_ghz: i.wifi_freq_ghz, wifi_signal_dbm: i.wifi_signal_dbm,
+    }));
+  }
+
+  // Audio: object with cards[] → flat array
+  if (data.audio && !Array.isArray(data.audio)) {
+    data.audio = (data.audio.cards || []).map(c => ({name: c.codec || c.name, status: 'OK', manufacturer: ''}));
+  }
+
+  // USB: devices[] → usb.controllers[]
+  if (data.usb && !data.usb.controllers) {
+    data.usb = {
+      controllers: (data.usb.devices || []).map(dev => ({name: dev.name, status: 'OK', pnp_id: dev.vid+':'+dev.pid})),
+      connected_count: (data.usb.devices || []).length,
+      connected: data.usb.devices || [],
+    };
+  }
+
+  // Build diagnostic_summary from problems[]
+  if (!data.diagnostic_summary) {
+    const probs = data.problems || [];
+    data.diagnostic_summary = {
+      health_score: data.health_score,
+      health_label: data.health_label,
+      issues:   probs.filter(p => p.severity === 'critical').map(p => p.title + (p.cause ? ' — '+p.cause : '')),
+      warnings: probs.filter(p => p.severity === 'warning' ).map(p => p.title + (p.cause ? ' — '+p.cause : '')),
+      symptoms: probs.map(p => ({
+        severity: p.severity, hardware_component: p.component,
+        symptom: p.title,
+        likely_causes: p.cause  ? [p.cause]  : [],
+        immediate_actions: p.action ? [p.action] : [],
+        detected_by: 'platine-scan v'+(data.platine_version||'2'),
+      })),
+    };
+  }
+
+  // Machine / scan meta compatibility
+  if (!data.machine) data.machine = {};
+  if (!data.machine.manufacturer && data.vendor) data.machine.manufacturer = data.vendor;
+  if (!data.machine.model       && data.model ) data.machine.model        = data.model;
+  if (!data.scan_date && data.scanned_at) data.scan_date = data.scanned_at;
+
+  return data;
+}
+
 // ═══ RICH DEMO DATA — EliteDesk 800 G3 ═══
 const DEMO={
   platine_version:"1.0.0",scan_id:"A3F2B891",scan_date:"2025-03-11 14:32:07",
@@ -116,11 +261,12 @@ function resetScan(){
   document.getElementById('map-screen').style.display='none';
   document.getElementById('hstrip').style.display='none';
   document.getElementById('hdr-model').textContent='v5 · Full Hardware Map';
-  ['hl-cpu','hl-disk','hl-bat'].forEach(id=>document.getElementById(id).style.display='none');
+  ['hl-cpu','hl-disk','hl-bat','hl-fans'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
   resetPanel();
 }
 
 function loadScan(data){
+  data=normalizeV2(data);
   scanData=data;
   const m=data.machine,s=data.diagnostic_summary||{};
   const isD=m.chassis_type&&!m.chassis_type.match(/Laptop|Notebook|Portable|Sub/i);
@@ -165,6 +311,8 @@ function loadScan(data){
   if(badD){document.getElementById('hl-disk').style.display='flex';document.getElementById('hl-disk').className='hlive er';document.getElementById('hlv-disk').textContent='⚠ SMART';}
   const bat=(data.battery||[])[0];
   if(bat?.health_pct){const el=document.getElementById('hl-bat');el.style.display='flex';el.className='hlive '+(bat.health_pct<50?'er':bat.health_pct<75?'wn':'');document.getElementById('hlv-bat').textContent=bat.health_pct+'%';}
+  const fansEl=document.getElementById('hl-fans');
+  if(fansEl){const stopped=data.thermals?.fans_stopped;if(stopped>0){fansEl.style.display='flex';fansEl.className='hlive er';document.getElementById('hlv-fans').textContent=stopped+' stopped';}else fansEl.style.display='none';}
 
   const prevSel = selId;
 buildMap(data,isD);
@@ -172,6 +320,7 @@ resetPanel();
 if(prevSel) setTimeout(()=>selComp(prevSel), 50);
   renderSymptoms(data);
   renderComparison(data);
+  renderCommunityMatches(data);
 }
 
 function renderComparison(data){
@@ -265,6 +414,46 @@ function renderComparison(data){
     }
   });
 
+  // ── CPU THROTTLE (v2) ────────────────────────────────────
+  if(data.cpu?.[0]?.throttling===true){
+    const reason=data.cpu[0].throttle_reason||'unknown';
+    checks.push({group:'CPU',sc:'er',label:'CPU throttling active',real:`Throttled — ${reason}`,expected:'No throttling (100% performance)',
+      action:reason==='thermal'?'Clean cooling system + replace thermal paste. Verify fan is spinning.':'Check AC adapter wattage. Update BIOS. Inspect VRM.'});
+  }
+
+  // ── FANS (v2) ─────────────────────────────────────────────
+  (data.thermals?.fans||[]).forEach(f=>{
+    if(f.rpm===0&&(f.min_rpm||600)>0){
+      checks.push({group:'Thermals',sc:'er',label:`${f.label||'Fan'} — not spinning`,real:'0 RPM',expected:`>${f.min_rpm||600} RPM`,
+        action:'Check fan connector. Clean blades with compressed air. Test with multimeter. Replace if faulty.'});
+    }
+  });
+
+  // ── BATTERY SWELLING (v2) ─────────────────────────────────
+  (data.battery||[]).forEach(b=>{
+    if(b.swelling_risk){
+      checks.push({group:'Battery',sc:'er',label:`${b.name||'Battery'} — swelling risk`,real:'Physical swelling detected',expected:'No swelling',
+        action:'<strong>STOP CHARGING immediately.</strong> Remove battery if possible. Fire hazard. Replace now.'});
+    }
+  });
+
+  // ── NVMe WEAR (v2) ───────────────────────────────────────
+  (data.storage?.drives||[]).forEach(drv=>{
+    if(drv.nvme_percentage_used!=null&&drv.nvme_percentage_used>80){
+      const sc=drv.nvme_percentage_used>95?'er':'wn';
+      checks.push({group:'Storage',sc,label:`${drv.model||'NVMe'} — high wear`,real:`${drv.nvme_percentage_used}% lifespan used`,expected:'<80%',
+        action:sc==='er'?'<strong>Replace NVMe soon</strong> — nearing end of life':'Monitor NVMe wear and back up data regularly'});
+    }
+  });
+
+  // ── BIOS AGE (v2) ─────────────────────────────────────────
+  const biosAge=data.machine?.bios_age_years;
+  if(biosAge!=null&&biosAge>3){
+    checks.push({group:'BIOS',sc:'wn',label:'BIOS update recommended',
+      real:`${biosAge} year${biosAge!==1?'s':''} old (${data.machine?.bios_version||'?'})`,expected:'Up to date firmware',
+      action:`Visit ${data.machine?.manufacturer||'manufacturer'} support site. BIOS updates fix security vulnerabilities and hardware bugs.`});
+  }
+
   // ── PROBLEM DEVICES ──────────────────────────────────────
   (data.problem_devices||[]).slice(0,3).forEach(p=>{
     checks.push({group:'Devices',sc:'er',label:p.name||'Unknown device',real:p.error||'Driver/firmware error',expected:'Device working correctly',
@@ -305,7 +494,7 @@ function renderComparison(data){
   });
 
   // Sort groups: errors first
-  const order=['Storage','CPU','RAM','Battery','Thermals','Devices'];
+  const order=['Storage','CPU','RAM','Battery','Thermals','BIOS','Devices'];
   const sortedGroups=order.filter(g=>groups[g]).concat(Object.keys(groups).filter(g=>!order.includes(g)));
 
   // Summary line
@@ -395,6 +584,63 @@ function renderSymptoms(data){
   }).join('');
 }
 
+async function renderCommunityMatches(data){
+  const ecm=document.getElementById('ecm');
+  const dcm=document.getElementById('dcm');
+  if(!ecm||!dcm) return;
+
+  const compToTag={thermals:'thermal',machine:'bios',cpu:'cpu',ram:'ram',storage:'storage',battery:'battery',gpu:'gpu',bios:'bios'};
+
+  // Use v2 problems[] or fall back to normalised symptoms
+  const probs=(data.problems||[]).length>0
+    ? data.problems
+    : (data.diagnostic_summary?.symptoms||[]).map(s=>({severity:s.severity,component:s.hardware_component,title:s.symptom}));
+
+  if(probs.length===0){
+    ecm.style.display='block'; dcm.style.display='none';
+    ecm.innerHTML=`<div class="sym-empty-ok"><div class="sym-big">✓</div><div class="sym-ok-t">No problems detected</div><div class="sym-ok-s">All clear — no community matches needed.<br><a href="/community" style="color:var(--ac)">Browse community →</a></div></div>`;
+    return;
+  }
+
+  // Fetch posts per unique component (parallel)
+  const seen=new Set();
+  const uniq=probs.filter(p=>{const t=compToTag[p.component]||p.component;if(!t||seen.has(t))return false;seen.add(t);return true;});
+
+  const results=await Promise.allSettled(
+    uniq.map(p=>fetch(`/api/community/posts?tag=${encodeURIComponent(compToTag[p.component]||p.component)}&sort=top`)
+      .then(r=>r.ok?r.json():{posts:[]}).catch(()=>({posts:[]})))
+  );
+
+  const byTag={};
+  uniq.forEach((p,i)=>{byTag[compToTag[p.component]||p.component]=(results[i].status==='fulfilled'?(results[i].value.posts||[]):[]).slice(0,3);});
+
+  const sessId=(window.location.pathname.match(/\/live\/([a-z0-9]+)/)||[])[1]||'';
+  const askBase=sessId?`/community/ask?scan=${encodeURIComponent(sessId)}`:`/community/ask`;
+  const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  let html=`<div style="padding:4px 0 10px;font-size:10px;color:var(--tx3)">Community posts matching detected problems</div>`;
+
+  probs.forEach(prob=>{
+    const tag=compToTag[prob.component]||prob.component;
+    const posts=byTag[tag]||[];
+    const sc=prob.severity==='critical'?'er':'wn';
+    html+=`<div class="cm-block">
+      <div class="cm-hdr"><span class="sym-dot ${sc}"></span><span class="cm-title">${esc(prob.title||prob.symptom)}</span></div>`;
+    if(posts.length>0){
+      html+=posts.map(p=>`<a href="/community/post/${p.id}" class="cm-post" target="_blank">
+        <div class="cm-post-t">${esc(p.title)}</div>
+        <div class="cm-post-m">${p.is_solved?'<span class="cm-solved">✓ Solved</span> · ':''}${p.score} votes · ${p.answer_count} answer${p.answer_count!==1?'s':''}</div>
+      </a>`).join('');
+    }else{
+      html+=`<div class="cm-none">No community posts yet for this problem.</div>`;
+    }
+    html+=`<a href="${esc(askBase)}" class="cm-ask" target="_blank">Ask the community →</a></div>`;
+  });
+
+  ecm.style.display='none'; dcm.style.display='block';
+  dcm.innerHTML=html;
+}
+
 function stC(s){return s==='er'?'#b91c1c':s==='wn'?'#b45309':'#16a34a'}
 function stF(s){return s==='er'?'#fef2f2':s==='wn'?'#fffbeb':'#f0fdf4'}
 function stB(s){return s==='er'?'#fecaca':s==='wn'?'#fde68a':'#bbf7d0'}
@@ -454,6 +700,24 @@ function buildMap(data,isD){
 
   // ── PROBLEM DEVICES ── (with error state)
   if(data.problem_devices)data.problem_devices.forEach((p,i)=>push({id:'prob'+i,type:'unknown',name:'⚠ Unknown',ref:p.name||'Problem device',data:p,status:'er',z:isD?{x:560,y:330+i*34,w:130,h:30}:{x:525,y:290+i*34,w:120,h:28}}));
+
+  // ── FANS (v2) — show if thermals data present ──
+  if(data.thermals?.fans?.length){
+    const stopped=data.thermals.fans.filter(f=>f.rpm===0&&(f.min_rpm||600)>0).length;
+    push({id:'fans0',type:'fans',name:'Fans',ref:data.thermals.fans.length+' fans · '+stopped+' stopped',data:data.thermals,status:stopped>0?'er':'ok',
+      z:isD?{x:340,y:278,w:100,h:38}:{x:160,y:410,w:120,h:34}});
+  }
+  // ── SECURITY (v2) ──
+  if(data.security){
+    const secOk=data.security.secure_boot==='enabled';
+    push({id:'sec0',type:'security',name:'Security',ref:'Secure Boot: '+(data.security.secure_boot||'?'),data:data.security,status:secOk?'ok':'wn',
+      z:isD?{x:340,y:322,w:100,h:38}:{x:290,y:410,w:110,h:34}});
+  }
+  // ── ANDROID (v2) ──
+  if(data.android?.detected){
+    push({id:'and0',type:'android',name:'Android',ref:((data.android.brand||'')+' '+(data.android.model||'')).trim(),data:data.android,status:'ok',
+      z:isD?{x:340,y:366,w:100,h:38}:{x:410,y:410,w:120,h:34}});
+  }
 
   renderSVG(isD);
 }
@@ -548,6 +812,19 @@ function renderSVG(isD){
       h+=`<rect x="${x+3}" y="${y+3}" width="${w-6}" height="${ch-6}" rx="2" fill="${fill}"/>`;
       h+=`<text x="${x+w/2}" y="${y+ch/2-4}" font-family="DM Sans,sans-serif" font-size="7" fill="#111" text-anchor="middle" font-weight="700">${c.name}</text>`;
       h+=`<text x="${x+w/2}" y="${y+ch/2+6}" font-family="DM Mono,monospace" font-size="5.5" fill="${color}" text-anchor="middle">${(c.data.model||'').substring(0,22)} · ${c.data.smart_status||'?'}</text>`;
+    }else if(c.type==='fans'){
+      const stoppedF=(c.data.fans||[]).filter(f=>f.rpm===0&&(f.min_rpm||600)>0).length;
+      h+=`<rect class="cb" x="${x}" y="${y}" width="${w}" height="${ch}" rx="3" fill="${fill}" stroke="${border}" stroke-width="1"/>`;
+      h+=`<text x="${x+w/2}" y="${y+ch/2-3}" font-family="DM Mono,monospace" font-size="7" fill="${color}" text-anchor="middle" font-weight="500">FANS</text>`;
+      h+=`<text x="${x+w/2}" y="${y+ch/2+7}" font-family="DM Mono,monospace" font-size="5.5" fill="${stoppedF>0?color:'#8a8a85'}" text-anchor="middle">${stoppedF>0?stoppedF+' stopped':'all running'}</text>`;
+    }else if(c.type==='security'){
+      h+=`<rect class="cb" x="${x}" y="${y}" width="${w}" height="${ch}" rx="3" fill="${fill}" stroke="${border}" stroke-width="1"/>`;
+      h+=`<text x="${x+w/2}" y="${y+ch/2-3}" font-family="DM Mono,monospace" font-size="7" fill="${color}" text-anchor="middle" font-weight="500">SECURITY</text>`;
+      h+=`<text x="${x+w/2}" y="${y+ch/2+7}" font-family="DM Mono,monospace" font-size="5.5" fill="#8a8a85" text-anchor="middle">${(c.data.tpm||'No TPM').substring(0,14)}</text>`;
+    }else if(c.type==='android'){
+      h+=`<rect class="cb" x="${x}" y="${y}" width="${w}" height="${ch}" rx="3" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>`;
+      h+=`<text x="${x+w/2}" y="${y+ch/2-3}" font-family="DM Mono,monospace" font-size="7" fill="#16a34a" text-anchor="middle" font-weight="500">ANDROID</text>`;
+      h+=`<text x="${x+w/2}" y="${y+ch/2+7}" font-family="DM Mono,monospace" font-size="5.5" fill="#8a8a85" text-anchor="middle">${((c.data.brand||'')+' '+(c.data.android_version||'')).trim().substring(0,14)}</text>`;
     }else{
       h+=`<rect class="cb" x="${x}" y="${y}" width="${w}" height="${ch}" rx="3" fill="${fill}" stroke="${border}" stroke-width="1"/>`;
       h+=`<text x="${x+w/2}" y="${y+ch/2-3}" font-family="DM Mono,monospace" font-size="7" fill="${color}" text-anchor="middle" font-weight="500">${c.name}</text>`;
@@ -600,15 +877,20 @@ function buildSpecs(c){
   if(c.type==='cpu'){
     if(d.cores)sp.push({l:'Cores',v:`${d.cores}C / ${d.logical_processors}T`});
     if(d.base_clock_mhz)sp.push({l:'Base Clock',v:`${d.base_clock_mhz} MHz`});
+    if(d.current_clock_mhz&&d.base_clock_mhz)sp.push({l:'Current Clock',v:`${d.current_clock_mhz} MHz`});
     if(d.temp_celsius)sp.push({l:'Temperature',v:`${d.temp_celsius}°C`,c:d.temp_celsius>90?'er':d.temp_celsius>75?'wn':'ok'});
+    if(d.per_core_temps&&d.per_core_temps.length){const mx=Math.max(...d.per_core_temps);sp.push({l:'Peak Core',v:`${mx}°C`,c:mx>90?'er':mx>75?'wn':'ok'});}
+    if(d.throttling!=null)sp.push({l:'Throttling',v:d.throttling?(d.throttle_reason?'Yes ('+d.throttle_reason+')':"Yes"):'No',c:d.throttling?'er':'ok'});
+    if(d.throttle_count&&d.throttling)sp.push({l:'Throttle Events',v:String(d.throttle_count),c:'wn'});
     if(d.load_percent!=null)sp.push({l:'CPU Load',v:`${d.load_percent}%`});
-    if(d.l3_cache_kb)sp.push({l:'L3 Cache',v:`${d.l3_cache_kb/1024}MB`});
+    if(d.l3_cache_kb)sp.push({l:'L3 Cache',v:`${(d.l3_cache_kb/1024).toFixed(0)}MB`});
     if(d.socket)sp.push({l:'Socket',v:d.socket});
   }else if(c.type==='ram'){
     if(d.size_gb)sp.push({l:'Capacity',v:`${d.size_gb}GB`});
     if(d.type)sp.push({l:'Type',v:d.type});
     if(d.speed_mhz)sp.push({l:'Rated Speed',v:`${d.speed_mhz} MHz`});
     if(d.configured_mhz)sp.push({l:'Running At',v:`${d.configured_mhz} MHz`,c:d.configured_mhz<d.speed_mhz?'wn':''});
+    if(d.xmp_available!=null)sp.push({l:'XMP/EXPO',v:d.xmp_available?(d.xmp_enabled?'Enabled':'Available — OFF'):'Not available',c:(d.xmp_available&&!d.xmp_enabled)?'wn':''});
     if(d.manufacturer)sp.push({l:'Maker',v:d.manufacturer});
     if(d.voltage_default)sp.push({l:'Voltage',v:d.voltage_default});
   }else if(c.type==='storage'){
@@ -618,6 +900,9 @@ function buildSpecs(c){
     const r=(d.smart_attributes||[]).find(a=>a.id===5);if(r)sp.push({l:'Realloc Sectors',v:String(r.raw),c:r.raw>0?'wn':'ok'});
     const poh=(d.smart_attributes||[]).find(a=>a.id===9);if(poh)sp.push({l:'Power On Hours',v:String(poh.raw)});
     const dt=(d.smart_attributes||[]).find(a=>a.id===194||a.id===190);if(dt)sp.push({l:'Disk Temp',v:`${dt.raw}°C`});
+    if(d.read_speed_mbps!=null)sp.push({l:'Read Speed',v:`${d.read_speed_mbps} MB/s`});
+    if(d.nvme_percentage_used!=null)sp.push({l:'NVMe Wear',v:`${d.nvme_percentage_used}%`,c:d.nvme_percentage_used>80?'er':d.nvme_percentage_used>50?'wn':'ok'});
+    if(d.nvme_available_spare!=null)sp.push({l:'Spare Blocks',v:`${d.nvme_available_spare}%`});
   }else if(c.type==='gpu'||c.type==='igpu'){
     if(d.vram_display)sp.push({l:'VRAM',v:d.vram_display});
     sp.push({l:'Type',v:d.is_integrated?'Integrated':'Discrete'});
@@ -629,11 +914,36 @@ function buildSpecs(c){
     if(d.health_pct)sp.push({l:'Health',v:`${d.health_pct}%`,c:d.health_pct<50?'er':d.health_pct<75?'wn':'ok'});
     if(d.cycle_count)sp.push({l:'Cycles',v:String(d.cycle_count)});
     if(d.design_capacity_wh)sp.push({l:'Design',v:`${d.design_capacity_wh}Wh`});
+    if(d.full_capacity_wh)sp.push({l:'Full Charge',v:`${d.full_capacity_wh}Wh`});
+    if(d.voltage_v!=null)sp.push({l:'Voltage',v:`${d.voltage_v}V`});
+    if(d.swelling_risk!=null)sp.push({l:'Swelling Risk',v:d.swelling_risk?'⚠ YES':'No',c:d.swelling_risk?'er':'ok'});
   }else if(c.type==='network'){
     if(d.speed_mbps)sp.push({l:'Speed',v:`${d.speed_mbps} Mbps`});
     sp.push({l:'Status',v:d.net_enabled?'Active':'Inactive',c:d.net_enabled?'ok':'wn'});
     if(d.mac_address)sp.push({l:'MAC',v:d.mac_address});
     if(d.ip_addresses?.[0])sp.push({l:'IP',v:d.ip_addresses[0]});
+    if(d.wifi_ssid)sp.push({l:'SSID',v:(d.wifi_ssid||'').substring(0,16)});
+    if(d.wifi_signal_dbm!=null)sp.push({l:'Signal',v:`${d.wifi_signal_dbm} dBm`,c:d.wifi_signal_dbm<-75?'er':d.wifi_signal_dbm<-60?'wn':'ok'});
+    if(d.wifi_freq_ghz)sp.push({l:'Band',v:String(d.wifi_freq_ghz).includes('5.')?'5 GHz':'2.4 GHz'});
+  }else if(c.type==='fans'){
+    (d.fans||[]).forEach(f=>{
+      const stpd=f.rpm===0&&(f.min_rpm||600)>0;
+      sp.push({l:f.label||'Fan',v:stpd?'STOPPED':f.rpm>0?f.rpm+' RPM':'—',c:stpd?'er':'ok'});
+    });
+    if(d.fan_count!=null)sp.push({l:'Total Fans',v:String(d.fan_count)});
+    if(d.fans_stopped!=null)sp.push({l:'Stopped',v:String(d.fans_stopped),c:d.fans_stopped>0?'er':'ok'});
+  }else if(c.type==='security'){
+    if(d.secure_boot)sp.push({l:'Secure Boot',v:d.secure_boot,c:d.secure_boot==='enabled'?'ok':'wn'});
+    if(d.tpm)sp.push({l:'TPM',v:d.tpm});
+    if(d.iommu!=null)sp.push({l:'IOMMU',v:d.iommu?'Enabled':'Disabled'});
+  }else if(c.type==='android'){
+    if(d.brand)sp.push({l:'Brand',v:d.brand});
+    if(d.model)sp.push({l:'Model',v:(d.model||'').substring(0,14)});
+    if(d.android_version)sp.push({l:'Android',v:d.android_version});
+    if(d.security_patch)sp.push({l:'Security Patch',v:d.security_patch});
+    if(d.battery&&d.battery.level_pct!=null)sp.push({l:'Battery',v:`${d.battery.level_pct}%`,c:d.battery.level_pct<20?'er':d.battery.level_pct<50?'wn':'ok'});
+    if(d.ram&&d.ram.total_gb)sp.push({l:'RAM Free',v:`${(d.ram.available_gb||0).toFixed(1)}GB / ${d.ram.total_gb}GB`});
+    if(d.storage&&d.storage.total_gb)sp.push({l:'Storage Free',v:`${(d.storage.available_gb||0).toFixed(0)}GB / ${d.storage.total_gb}GB`});
   }else if(c.type==='usb'){
     sp.push({l:'Status',v:d.status||'OK',c:d.status==='OK'?'ok':'er'});
     if(d.pnp_id)sp.push({l:'Device ID',v:(d.pnp_id||'').substring(0,18)});
@@ -657,7 +967,7 @@ function resetPanel(){
 }
 function tab(t){
   curTab=t;
-  const ns=['info','terminal','bios','faults','symptoms','comparison'];
+  const ns=['info','terminal','bios','faults','symptoms','comparison','community'];
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',ns[i]===t));
   document.querySelectorAll('.tab-pane').forEach((el,i)=>el.classList.toggle('active',ns[i]===t));
 }
