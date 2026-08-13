@@ -262,6 +262,7 @@ function resetScan(){
   document.getElementById('hstrip').style.display='none';
   document.getElementById('hdr-model').textContent='v5 · Full Hardware Map';
   ['hl-cpu','hl-disk','hl-bat','hl-fans'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  const pdfBtn=document.getElementById('pdf-btn');if(pdfBtn)pdfBtn.style.display='none';
   resetPanel();
 }
 
@@ -321,6 +322,7 @@ if(prevSel) setTimeout(()=>selComp(prevSel), 50);
   renderSymptoms(data);
   renderComparison(data);
   renderCommunityMatches(data);
+  const pdfBtn=document.getElementById('pdf-btn');if(pdfBtn)pdfBtn.style.display='inline-flex';
 }
 
 function renderComparison(data){
@@ -639,6 +641,114 @@ async function renderCommunityMatches(data){
 
   ecm.style.display='none'; dcm.style.display='block';
   dcm.innerHTML=html;
+}
+
+function exportPDF(){
+  if(!scanData) return;
+  const data=scanData;
+  const m=data.machine||{};
+  const s=data.diagnostic_summary||{};
+  const hs=s.health_score||0;
+  const hl=hs>=80?'ok':hs>=60?'wn':'er';
+  const hlLabel=s.health_label||{ok:'GOOD',wn:'FAIR',er:'CRITICAL'}[hl];
+  const date=new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const scanDate=(data.scan_date||'').substring(0,10)||date;
+  const esc=v=>String(v||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const isD=m.chassis_type&&!m.chassis_type.match(/Laptop|Notebook|Portable|Sub/i);
+
+  const issues=s.issues||[];
+  const warnings=s.warnings||[];
+
+  // Component rows
+  const rows=[];
+  (data.cpu||[]).forEach(c=>{
+    const t=c.temp_celsius;
+    const st=t>90?'er':t>75?'wn':'ok';
+    rows.push({cat:'CPU',name:esc(c.name),detail:c.cores+'C/'+c.logical_processors+'T · '+(t?t+'°C':'—'),st});
+  });
+  (data.memory?.modules||[]).forEach(mod=>{
+    rows.push({cat:'RAM',name:esc(mod.slot),detail:mod.size_gb+'GB '+mod.type+' '+mod.configured_mhz+'MHz',st:'ok'});
+  });
+  (data.storage?.drives||[]).forEach(d=>{
+    const st=d.smart_failing?'er':d.smart_status==='WARNING'?'wn':'ok';
+    const hrs=((d.smart_attributes||[]).find(a=>a.id===9)||{}).raw;
+    rows.push({cat:d.bus_type==='NVMe'?'NVMe':d.model.match(/SSD/i)?'SSD':'HDD',name:esc(d.model),detail:d.size_gb+'GB'+(hrs?' · '+Math.round(hrs/24/365.25*10)/10+' yr':'')+(d.nvme_percentage_used!=null?' · Wear '+d.nvme_percentage_used+'%':''),st});
+  });
+  (data.gpu||[]).forEach(g=>{
+    rows.push({cat:g.is_integrated?'iGPU':'GPU',name:esc(g.name),detail:g.vram_display||'—',st:'ok'});
+  });
+  (data.battery||[]).forEach(b=>{
+    const st=b.health_pct<50?'er':b.health_pct<75?'wn':'ok';
+    rows.push({cat:'Battery',name:esc(b.chemistry||'Li-Ion'),detail:b.health_pct+'% health · '+(b.current_capacity_wh||'—')+'Wh / '+(b.design_capacity_wh||'—')+'Wh'+(b.swelling_risk?' · ⚠ Swelling':''),st});
+  });
+  (data.network||[]).forEach(n=>{
+    if(!n.is_bluetooth)rows.push({cat:n.is_wireless?'WiFi':'LAN',name:esc(n.name),detail:n.is_wireless?(n.wifi_ssid?esc(n.wifi_ssid)+' · ':'')+(n.wifi_signal_dbm?n.wifi_signal_dbm+'dBm':'')+' '+( n.speed_mbps||'')+'Mbps':(n.speed_mbps||'—')+'Mbps',st:'ok'});
+  });
+
+  const probsHtml=[
+    ...issues.map(i=>`<div class="pr-prob er">${esc(i)}</div>`),
+    ...warnings.map(w=>`<div class="pr-prob wn">${esc(w)}</div>`)
+  ].join('');
+
+  const rowsHtml=rows.map(r=>`<tr>
+    <td style="color:#8a8a85;font-size:9px">${r.cat}</td>
+    <td>${r.name}</td>
+    <td style="color:#4a4a47">${r.detail}</td>
+    <td><span class="pr-st ${r.st}">${r.st==='er'?'ISSUE':r.st==='wn'?'WARNING':'OK'}</span></td>
+  </tr>`).join('');
+
+  const scanId=data.scan_id||(window.location.pathname.match(/\/live\/([a-z0-9]+)/)||[])[1]||'—';
+
+  document.getElementById('print-view').innerHTML=`<div class="pr-page">
+    <div class="pr-hdr">
+      <div>
+        <div class="pr-logo">Platine</div>
+        <div class="pr-logo-sub">Hardware Diagnostic Report</div>
+      </div>
+      <div class="pr-meta">
+        <div>platine.dev</div>
+        <div>Generated: ${date}</div>
+        <div>Scan: #${esc(scanId)}</div>
+        <div>Scanned: ${esc(scanDate)}</div>
+      </div>
+    </div>
+
+    <div class="pr-machine">
+      <div class="pr-model">${esc((m.manufacturer||'')+' '+(m.model||''))}</div>
+      <div class="pr-sub">${esc(m.chassis_type||'')}${m.serial_number?' · S/N: '+esc(m.serial_number):''}</div>
+    </div>
+
+    <div class="pr-score-row">
+      <div>
+        <div class="pr-score-num ${hl}">${hs}</div>
+      </div>
+      <div class="pr-score-divider"></div>
+      <div>
+        <div class="pr-score-label ${hl}">${hlLabel}</div>
+        <div class="pr-score-sub">${issues.length} issue${issues.length!==1?'s':''} · ${warnings.length} warning${warnings.length!==1?'s':''} · ${(data.cpu?.[0]?.cores||'—')} cores</div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="font-size:9px;color:#4a4a47;text-align:right">
+        ${m.bios_version?'BIOS: '+esc(m.bios_version)+'<br>':''}
+        ${m.os?esc(m.os):''}
+      </div>
+    </div>
+
+    ${probsHtml?`<div class="pr-section">Detected problems</div>${probsHtml}`:''}
+
+    <div class="pr-section">Components</div>
+    <table class="pr-table">
+      <thead><tr><th>Type</th><th>Component</th><th>Details</th><th>Status</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+
+    <div class="pr-footer">
+      <span>All data processed locally — nothing sent to third parties</span>
+      <span>platine.dev · Hardware Diagnostics</span>
+    </div>
+  </div>`;
+
+  window.print();
 }
 
 function stC(s){return s==='er'?'#b91c1c':s==='wn'?'#b45309':'#16a34a'}

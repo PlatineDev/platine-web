@@ -34,6 +34,7 @@
     <button class="btn btn-p" onclick="document.getElementById('fih').click()">▲ Upload JSON</button>
     <input type="file" id="fih" accept=".json" style="display:none" onchange="handleFile(this)">
     <button class="btn btn-g" id="post-q-btn" style="display:none" onclick="postQuestion()">💬 Post question</button>
+    <button class="btn btn-g" id="pdf-btn" style="display:none" onclick="exportPDF()">⬇ Export PDF</button>
   </div>
 </header>
 
@@ -177,6 +178,7 @@
   </div>
 </div>
 
+<div id="print-view"></div>
 <script src="/js/api.js"></script>
 <script src="/js/auth.js"></script>
 <script src="/js/live.js"></script>
