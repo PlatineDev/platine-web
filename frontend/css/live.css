@@ -395,6 +395,38 @@ header {
 }
 .cm-ask:hover { text-decoration: underline; }
 
+/* ── PRO MODAL ── */
+#pro-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.pro-box {
+  background: var(--bg); border: 1px solid var(--bd); border-radius: 12px;
+  padding: 28px 28px 22px; width: 320px; text-align: center; box-shadow: var(--sh2);
+}
+.pro-badge {
+  display: inline-block; background: var(--ac); color: #fff;
+  font-size: 8px; font-weight: 700; letter-spacing: 1.5px;
+  padding: 3px 10px; border-radius: 99px; margin-bottom: 12px;
+}
+.pro-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.pro-sub { font-size: 10px; color: var(--tx2); line-height: 1.6; margin-bottom: 16px; }
+.pro-list { list-style: none; text-align: left; font-size: 10px; color: var(--tx); margin-bottom: 18px; display: flex; flex-direction: column; gap: 6px; }
+.pro-list li { display: flex; align-items: center; gap: 8px; }
+.pro-price { font-size: 13px; font-weight: 600; color: var(--tx); margin-bottom: 16px; }
+.pro-price span { font-size: 10px; font-weight: 400; color: var(--tx3); }
+.pro-cta {
+  display: block; background: var(--ac); color: #fff; text-decoration: none;
+  font-size: 11px; font-weight: 600; padding: 10px; border-radius: 7px;
+  margin-bottom: 8px; transition: background .12s;
+}
+.pro-cta:hover { background: var(--ac2); }
+.pro-cancel {
+  background: none; border: none; font-size: 10px; color: var(--tx3);
+  cursor: pointer; font-family: var(--mono); padding: 4px 8px;
+}
+.pro-cancel:hover { color: var(--tx); }
+
 /* ── PRINT / PDF EXPORT ── */
 #print-view { display: none; }
 

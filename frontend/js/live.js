@@ -643,8 +643,22 @@ async function renderCommunityMatches(data){
   dcm.innerHTML=html;
 }
 
-function exportPDF(){
+function closeProModal(){document.getElementById('pro-modal').style.display='none';}
+
+async function exportPDF(){
   if(!scanData) return;
+
+  // Gate: must be logged in
+  if(!Auth.isLoggedIn()){
+    window.location.href=`/login?next=${encodeURIComponent(window.location.pathname)}`;
+    return;
+  }
+  // Gate: must be Pro (is_supporter)
+  try{
+    const me=await AuthAPI.me();
+    if(!me.is_supporter){document.getElementById('pro-modal').style.display='flex';return;}
+  }catch{document.getElementById('pro-modal').style.display='flex';return;}
+
   const data=scanData;
   const m=data.machine||{};
   const s=data.diagnostic_summary||{};
